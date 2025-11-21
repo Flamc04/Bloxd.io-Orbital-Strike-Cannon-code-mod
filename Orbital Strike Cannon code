@@ -1,0 +1,215 @@
+const camTasks = {};
+
+function setCameraColor(id, color, opacity=1, size=10000, char=" ", duration=2){
+  camTasks[id] = {
+    msg: [{str: char, style:{color, opacity, fontSize:size+"px"}}],
+    end: Date.now() + duration*1000
+  };
+}
+
+function cameraColorUpdate(){
+  const now = Date.now();
+  for(const id in camTasks){
+    if(now > camTasks[id].end){ delete camTasks[id]; continue; }
+    api.sendFlyingMiddleMessage(id, camTasks[id].msg, 0);
+  }
+}
+
+
+
+let CENTER = [0,0,0];
+const RADIUS = 16;
+const HEIGHT = 150;
+const BLOCK = "Air";
+const BLOCKS_PER_TICK = 80;
+
+let running = false;
+let currentY = 0;
+let layerProgress = 0;
+let halfwayTriggered = false;
+
+onPlayerClick = (playerId, wasAltClick) => {
+
+    let item = api.getHeldItem(playerId);
+    if (!item || item.name !== "Gray Paintball") return;
+
+    let [x, y, z] = api.getPosition(playerId);
+	api.removeItemName(playerId, "Gray Paintball", 1)
+
+    CENTER = [x, y, z];
+    currentY = y + HEIGHT;
+    layerProgress = 0;
+    halfwayTriggered = false;
+    running = true;
+
+    runOrbitalParticles(x, y, z);
+};
+
+
+function runOrbitalParticles(a, b, c) {
+
+    let x = a, y = b, z = c;
+
+    y += 125;
+    api.playParticleEffect({
+        dir1: [-8, 0, -8],
+        dir2: [8, 0, 8],
+        pos1: [x, y, z],
+        pos2: [x + 1, y + 1, z + 1],
+        texture: "drift",
+        minLifeTime: 7,
+        maxLifeTime: 8,
+        minEmitPower: 2,
+        maxEmitPower: 2,
+        minSize: 20,
+        maxSize: 21,
+        manualEmitCount: 1200,
+        gravity: [0, 0, 0],
+        colorGradients: [
+            { timeFraction: 0, minColor: [108,108,108,1], maxColor: [148,148,148,1] }
+        ],
+        velocityGradients: [{ timeFraction: 0, factor: 1, factor2: 1 }],
+        blendMode: 1,
+    });
+
+    y += 85;
+    api.playParticleEffect({
+        dir1: [-1,-1,-1],
+        dir2: [1,1,1],
+        pos1: [x, y - 130, z],
+        pos2: [x + 1, y + 1, z + 1],
+        texture: "generic_2",
+        minLifeTime: 6,
+        maxLifeTime: 7,
+        minEmitPower: 0.45,
+        maxEmitPower: 0.55,
+        minSize: 1,
+        maxSize: 2,
+        manualEmitCount: 8000,
+        gravity: [0, -120, 0],
+        colorGradients: [
+            { timeFraction: 0, minColor: [166,12,13,1], maxColor: [166,12,12,1] }
+        ],
+        velocityGradients: [{ timeFraction: 3, factor: 0.1, factor2: 0.09 }],
+        blendMode: 1,
+    });
+
+    y -= 208;
+    api.playParticleEffect({
+        dir1: [-0.001,-0.001,-0.001],
+        dir2: [0.001,0.001,0.001],
+        pos1: [x - 2.5, y - 2.5, z - 2.5],
+        pos2: [x + 2.5, y + 2.5, z + 2.5],
+        texture: "glint",
+        minLifeTime: 47,
+        maxLifeTime: 48,
+        minEmitPower: 2,
+        maxEmitPower: 3,
+        minSize: 0.65,
+        maxSize: 0.75,
+        manualEmitCount: 2000,
+        gravity: [0, 0, 0],
+        colorGradients: [
+            { timeFraction: 0, minColor: [160,12,12,1], maxColor: [160,12,12,1] }
+        ],
+        velocityGradients: [{ timeFraction: 3, factor: 0.1, factor2: 0.09 }],
+        blendMode: 1,
+    });
+}
+
+
+tick = () => {
+
+    cameraColorUpdate();
+
+    if (!running) return;
+
+    let [cx, cy, cz] = CENTER;
+
+    let totalLayers = HEIGHT * 2;
+    let currentIndex = (cy + HEIGHT) - currentY;
+
+    if (!halfwayTriggered && currentIndex >= totalLayers / 2) {
+        halfwayTriggered = true;
+
+		let player = api.getEntityName(playerId);
+        let players = api.getPlayerIds();
+        for (let p of players) {
+            let [px, py, pz] = api.getPosition(p);
+            let dx = px - cx, dy = py - cy, dz = pz - cz;
+
+            if (dx*dx + dy*dy + dz*dz <= 2500) {
+                api.setHealth(p, 0);
+	api.broadcastMessage(`${player} has been killed by the Orbital Strike Cannon`, {color: "red"})
+setCameraColor(p, "white", 1, 10000, "■", 1);
+setCameraColor(p, "white", 0.5, 10000, "■", 5);
+            }
+        }
+    }
+
+    if (currentY < cy - HEIGHT) {
+        running = false;
+        return;
+    }
+
+    let placed = 0;
+    let diameter = RADIUS * 2 + 1;
+
+    while (placed < BLOCKS_PER_TICK) {
+
+        let x = (layerProgress % diameter) - RADIUS;
+        let z = Math.floor(layerProgress / diameter) - RADIUS;
+
+        layerProgress++;
+
+        if (layerProgress >= diameter * diameter) {
+            layerProgress = 0;
+            currentY--;
+            break;
+        }
+
+        if (x * x + z * z <= RADIUS * RADIUS) {
+            api.setBlock(cx + x, currentY, cz + z, BLOCK);
+            placed++;
+        }
+    }
+};
+
+
+onPlayerJoin = (playerId) => {
+api.editItemCraftingRecipes(playerId, "Gray Paintball Explosive Item", [{requires: [{ items: ["Block of Iron"], amt: 1 },{ items: ["Diamond"], amt: 3 },{ items: ["Gray Concrete"], amt: 2 },{ items: ["Firecracker Pebble"], amt: 2 },{ items: ["Knight Heart"], amt: 1 }],produces: 1,station: "Workbench"}]);
+
+api.sendMessage(playerId, [
+  {str:"This world contains the Orbital Strike Cannon code/mod\n", style:{color:"yellow"}},
+  {str:"Made by Flamc04 (discord: Flamc04, yt: @bloxd_mp4)\n", style:{color:"red"}},
+  {str:"[!] THIS CODE USES A LOT OF PARTICLES. PLEASE FIRE THE CANNON ONE AT A TIME, BECAUSE OTHERWISE THE CANNON WONT WORK PROPERLY [!]\n\n", style:{color:"orange"}},
+  {str:"Crafting recipe:\n", style:{color:"cyan"}},
+  {str:"1x Block of Iron ", style:{color:"#00A8FF"}},
+  {icon:"Block of Iron"},
+  {str:"\n3x Diamond ", style:{color:"#00A8FF"}},
+  {icon:"Diamond"},
+  {str:"\n2x Gray Concrete ", style:{color:"#00A8FF"}},
+  {icon:"Gray Concrete"},
+  {str:"\n2x Firecracker Pebble ", style:{color:"#00A8FF"}},
+  {icon:"Firecracker Pebble"},
+  {str:"\n1x Knight Heart ", style:{color:"#00A8FF"}},
+  {icon:"Knight Heart"},
+  {str:"\n\nHave fun with the mod! Be careful tho", style:{color:"lime"}}
+]);
+}
+
+
+onPlayerCraft = (playerId, itemName, craftingIdx, recipe, craftTimes) => {
+
+if (itemName !== "Gray Paintball Explosive Item") return;
+const amountCrafted = recipe.produces * craftTimes;
+api.removeItemName(playerId, itemName, amountCrafted);
+
+api.giveItem(playerId, "Gray Paintball", 1, {
+    customDisplayName: "Orbital Strike Cannon",
+    customDescription: "Delete a big part of the world in just one click!",
+customAttributes: {
+enchantments: {
+},"enchantmentTier": "Tier 1",}
+})
+};
